@@ -51,11 +51,15 @@
     const options = {
         username: USERNAME,
         password: PASSWORD,
-        protocolId: 'MQIsdp',
-        protocolVersion: 3,
-        connectTimeout: 4000,
-        clientId: 'web_client_' + Math.random().toString(16).substr(2, 8),
+
+        protocolVersion: 4,      // MQTT 3.1.1 (ブラウザでの標準)
+        clean: true,
+        connectTimeout: 10000,   // 10秒待機
+        clientId: 'web_' + Math.random().toString(16).substr(2, 8),
+        // protocolId などの古い項目は削除します
     };
+
+
 
     const client = mqtt.connect(BROKER_URL, options);
 
