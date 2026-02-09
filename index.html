@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自宅カメラ・リモコン</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background-color: #f0f2f5; }
+        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #1a73e8; font-size: 1.5rem; }
+        button { 
+            width: 100%; padding: 15px; font-size: 1.2rem; font-weight: bold;
+            border: none; border-radius: 8px; cursor: pointer; margin: 10px 0;
+            transition: opacity 0.2s;
+        }
+        #startBtn { background-color: #34a853; color: white; }
+        #stopBtn { background-color: #ea4335; color: white; }
+        button:active { opacity: 0.7; }
+        #status { margin: 20px 0; padding: 10px; border-radius: 5px; background: #eee; font-size: 0.9rem; }
+        #linkArea { margin-top: 30px; }
+        .view-link { 
+            display: inline-block; padding: 20px; background: #1a73e8; color: white; 
+            text-decoration: none; border-radius: 10px; font-weight: bold; animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🏠 自宅カメラ・リモコン</h1>
+    
+    <div id="status">ステータス: 接続中...</div>
+
+    <button id="startBtn">カメラを起動する</button>
+    <button id="stopBtn">カメラを停止する</button>
+
+    <div id="linkArea">
+        </div>
+</div>
+
+<script>
+    // --- 設定 (自宅PCの Node.js 側と合わせてください) ---
+    const BROKER = 'wss://broker.emqx.io:8084/mqtt';
+    const TOPIC_CONTROL = 'rnubnxuhbtdjsm-un-siewuchtus-2026/nudjx'; // 指令を送るトピック
+    const TOPIC_URL = 'myhome/cam/url_info';    // URLを受け取るトピック
+
+    // MQTT接続
+    const client = mqtt.connect(BROKER);
+
+    const statusEl = document.getElementById('status');
+    const linkArea = document.getElementById('linkArea');
+
+    client.on('connect', () => {
+        statusEl.innerText = 'ステータス: 接続完了（準備OK）';
+        statusEl.style.background = '#e6f4ea';
+        client.subscribe(TOPIC_URL);
+    });
+
+    client.on('error', (err) => {
+        statusEl.innerText = 'ステータス: 接続エラー';
+        statusEl.style.background = '#fce8e6';
+    });
+
+    // 「起動」ボタン
+    document.getElementById('startBtn').onclick = () => {
+        linkArea.innerHTML = 'URL発行を待っています...';
+        client.publish(TOPIC_CONTROL, 'START_CAMERA');
+    };
+
+    // 「停止」ボタン
+    document.getElementById('stopBtn').onclick = () => {
+        linkArea.innerHTML = '';
+        client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
+        statusEl.innerText = 'ステータス: 停止命令を送信しました';
+    };
+
+    // URLを受信したとき
+    client.on('message', (topic, message) => {
+        if (topic === TOPIC_URL) {
+            const url = message.toString();
+            statusEl.innerText = 'ステータス: 配信中！';
+            linkArea.innerHTML = `
+                <p>映像の準備ができました：</p>
+                <a href="${url}" target="_blank" class="view-link">🔴 映像を見る（別タブ）</a>
+            `;
+        }
+    });
+</script>
+
+</body>
+</html>
