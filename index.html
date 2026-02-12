@@ -89,16 +89,37 @@
         statusEl.innerText = '停止命令を送信しました';
     };
 
-    client.on('message', (topic, message) => {
-        if (topic === TOPIC_URL) {
-            const url = message.toString();
-            statusEl.innerText = '配信中！';
+// index.html の 101行目付近を以下に差し替え
+client.on('message', (topic, message) => {
+    if (topic === TOPIC_URL) {
+        const receivedData = message.toString();
+        statusEl.innerText = '配信準備完了！';
+        
+        // 届いたのが「http」で始まるURLではなく「< !DOCTYPE」などのHTMLだった場合の処理
+        if (receivedData.includes('<html')) {
+            linkArea.innerHTML = `
+                <p>操作パネル付き映像の準備ができました：</p>
+                <button class="view-link" id="openView">🔴 映像と操作パネルを開く</button>
+            `;
+            
+            // ボタンを押した時に、届いたHTMLを別タブで展開する
+            document.getElementById('openView').onclick = () => {
+                const newWindow = window.open();
+                newWindow.document.write(receivedData);
+                newWindow.document.close();
+            };
+        } else {
+            // 万が一URLだけ届いた時のバックアップ
             linkArea.innerHTML = `
                 <p>映像の準備ができました：</p>
-                <a href="${url}" target="_blank" class="view-link">🔴 映像を見る（別タブ）</a>
+                <a href="${receivedData}" target="_blank" class="view-link">🔴 映像を見る（別タブ）</a>
             `;
         }
-    });
+    }
+});
+	
+	
+	
 </script>
 
 </body>
