@@ -9,122 +9,61 @@
         body { font-family: sans-serif; text-align: center; padding: 20px; background-color: #f0f2f5; }
         .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
         h1 { color: #1a73e8; font-size: 1.5rem; }
-        button { 
-            width: 100%; padding: 15px; font-size: 1.2rem; font-weight: bold;
-            border: none; border-radius: 8px; cursor: pointer; margin: 10px 0;
-            transition: opacity 0.2s;
-        }
+        button { width: 100%; padding: 15px; font-size: 1.2rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin: 10px 0; }
         #startBtn { background-color: #34a853; color: white; }
         #stopBtn { background-color: #ea4335; color: white; }
-        #status { margin: 20px 0; padding: 10px; border-radius: 5px; background: #eee; font-size: 0.8rem; word-break: break-all; }
-        #linkArea { margin-top: 30px; }
-        .view-link { 
-            display: inline-block; padding: 20px; background: #1a73e8; color: white; 
-            text-decoration: none; border-radius: 10px; font-weight: bold; animation: pulse 2s infinite;
-        }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        .view-link { display: inline-block; padding: 15px 25px; background-color: #1a73e8; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px; cursor: pointer; border: none; width: 100%; }
+        #status { margin: 15px 0; padding: 10px; background: #eee; border-radius: 5px; font-size: 0.9rem; }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h1>🏠 見守りカメラ</h1>
+        <div id="status">ステータス: 接続中...</div>
+        <button id="startBtn">カメラを起動する</button>
+        <button id="stopBtn">カメラを停止する</button>
+        <div id="linkArea"></div>
+    </div>
 
-<div class="container">
-    <h1>🏠 監視カメラ・リモコン</h1>
-    <div id="status">ステータス: 接続中...</div>
-    <button id="startBtn">カメラを起動する</button>
-    <button id="stopBtn">カメラを停止する</button>
-    <div id="linkArea"></div>
-</div>
+    <script>
+        const BROKER_URL = 'wss://x0a42d28.ala.asia-southeast1.emqxsl.com:8084/mqtt';
+        const TOPIC_CONTROL = 'myneco/cam/maneki7/control';
+        const TOPIC_URL = 'myneco/cam/maneki7/url_info';
 
-<script>
-    // --- 【設定エリア】EMQX Cloudの情報を入力してください ---
-    const HOST = 'x0a42d28.ala.asia-southeast1.emqxsl.com'; // Overviewで確認したHost名 (末尾の :8084 は含めない)
-    const USERNAME = 'kanC';    // Authenticationで作成したユーザー名
-    const PASSWORD = 'wMAdfBLkQiM2t9D';    // Authenticationで作成したパスワード
+        const client = mqtt.connect(BROKER_URL, {
+            username: 'kanC', password: 'wMAdfBLkQiM2t9D'
+        });
 
-    // トピック設定 (PC側の index.js と完全に一致させてください)
-    const TOPIC_CONTROL = 'myneco/cam/maneki7/control'; 
-    const TOPIC_URL     = 'myneco/cam/maneki7/url_info';
+        client.on('connect', () => {
+            document.getElementById('status').innerText = 'ステータス: 接続完了';
+            client.subscribe(TOPIC_URL);
+        });
 
-    // --- 接続処理 ---
-    const BROKER_URL = `wss://${HOST}:8084/mqtt`;
-    
-    const options = {
-        username: USERNAME,
-        password: PASSWORD,
+        document.getElementById('startBtn').onclick = () => {
+            document.getElementById('linkArea').innerHTML = '準備中...';
+            client.publish(TOPIC_CONTROL, 'START_CAMERA');
+        };
 
-        protocolVersion: 4,      // MQTT 3.1.1 (ブラウザでの標準)
-        clean: true,
-        connectTimeout: 10000,   // 10秒待機
-        clientId: 'web_' + Math.random().toString(16).substr(2, 8),
-        // protocolId などの古い項目は削除します
-    };
+        document.getElementById('stopBtn').onclick = () => {
+            document.getElementById('linkArea').innerHTML = '';
+            client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
+        };
 
-
-
-    const client = mqtt.connect(BROKER_URL, options);
-
-    const statusEl = document.getElementById('status');
-    const linkArea = document.getElementById('linkArea');
-
-    client.on('connect', () => {
-        statusEl.innerText = 'ステータス: 接続完了（準備OK）';
-        statusEl.style.background = '#e6f4ea';
-        client.subscribe(TOPIC_URL);
-    });
-
-    client.on('error', (err) => {
-        console.error('Connection error: ', err);
-        statusEl.innerText = '接続エラー: ' + err.message;
-        statusEl.style.background = '#fce8e6';
-    });
-
-    document.getElementById('startBtn').onclick = () => {
-        linkArea.innerHTML = 'URL発行を待っています...';
-        client.publish(TOPIC_CONTROL, 'START_CAMERA');
-    };
-
-    document.getElementById('stopBtn').onclick = () => {
-        linkArea.innerHTML = '';
-        client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
-        statusEl.innerText = '停止命令を送信しました';
-    };
-
-// index.html の 101行目付近を以下に差し替え
-client.on('message', (topic, message) => {
-    if (topic === TOPIC_URL) {
-        const receivedData = message.toString();
-        statusEl.innerText = '配信準備完了！';
-        
-        // 届いたのが「http」で始まるURLではなく「< !DOCTYPE」などのHTMLだった場合の処理
-        if (receivedData.includes('<html')) {
-            linkArea.innerHTML = `
-                <p>操作パネル付き映像の準備ができました：</p>
-                <button class="view-link" id="openView">🔴 映像と操作パネルを開く</button>
-            `;
-            
-            // ボタンを押した時に、届いたHTMLを別タブで展開する
-            document.getElementById('openView').onclick = () => {
-                const newWindow = window.open();
-                newWindow.document.write(receivedData);
-                newWindow.document.close();
-            };
-        } else {
-            // 万が一URLだけ届いた時のバックアップ
-            linkArea.innerHTML = `
-                <p>映像の準備ができました：</p>
-                <a href="${receivedData}" target="_blank" class="view-link">🔴 映像を見る（別タブ）</a>
-            `;
-        }
-    }
-});
-	
-	
-	
-</script>
-
+        client.on('message', (topic, message) => {
+            if (topic === TOPIC_URL) {
+                const receivedData = message.toString();
+                if (receivedData.includes('<html')) {
+                    document.getElementById('linkArea').innerHTML = `
+                        <button class="view-link" id="openView">🔴 映像と操作パネルを開く</button>
+                    `;
+                    document.getElementById('openView').onclick = () => {
+                        const newWindow = window.open();
+                        newWindow.document.write(receivedData);
+                        newWindow.document.close();
+                    };
+                }
+            }
+        });
+    </script>
 </body>
 </html>
-
-
-
-
