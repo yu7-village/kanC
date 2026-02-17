@@ -7,12 +7,37 @@
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: sans-serif; text-align: center; margin: 0; padding: 10px; background-color: #f0f2f5; color: #333; }
-        .container { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+        
+        /* コンテナ：PCでは広く、スマホでは幅いっぱいに */
+        .container { 
+            background: white; 
+            padding: 15px; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            width: 95%;
+            max-width: 1000px; /* パソコンで最大1000pxまで拡大 */
+            margin: auto; 
+        }
+
         h1 { color: #1a73e8; font-size: 1.2rem; margin: 10px 0; }
         
-        /* 映像エリア */
-        .video-container { width: 100%; background: #000; position: relative; overflow: hidden; border-radius: 10px; margin-bottom: 15px; display: none; }
-        iframe { width: 100%; height: 56.25vw; border: none; display: block; }
+        /* 映像エリア：16:9の比率を維持してレスポンシブに拡大 */
+        .video-container { 
+            width: 100%; 
+            background: #000; 
+            position: relative; 
+            overflow: hidden; 
+            border-radius: 10px; 
+            margin-bottom: 15px; 
+            display: none;
+            aspect-ratio: 16 / 9; /* 映像の比率を固定 */
+        }
+        iframe { 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            display: block; 
+        }
         
         /* 通知オーバーレイ */
         #overlay {
@@ -23,14 +48,20 @@
         .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* 操作パネル */
+        /* 操作パネル：ボタン類は横に広がりすぎないよう中央寄りに制限 */
+        #controls {
+            max-width: 600px;
+            margin: 15px auto 0;
+        }
+
         .control-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
         .control-label { font-size: 0.85rem; font-weight: bold; color: #1a73e8; min-width: 70px; text-align: right; }
         .btn-group { display: flex; gap: 5px; flex: 1; }
         
         button { padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
-        #startBtn { background-color: #34a853; color: white; width: 100%; }
-        #stopBtn { background-color: #ea4335; color: white; width: 100%; margin-top: 20px; display: none; } /* 初期状態は非表示 */
+        #startBtn { background-color: #34a853; color: white; width: 100%; max-width: 400px; margin: 20px auto; }
+        #stopBtn { background-color: #ea4335; color: white; width: 100%; margin-top: 25px; display: none; }
+        
         .btn-cam { background: #673ab7; color: white; flex: 1; }
         .btn-servo { background: #607d8b; color: white; flex: 1; font-size: 11px; }
         .btn-refresh { background: #f4b400; color: white; width: 100%; margin-top: 10px; }
@@ -53,7 +84,7 @@
 
         <button id="startBtn">カメラを起動する</button>
 
-        <div id="controls" style="display: none; margin-top: 15px;">
+        <div id="controls" style="display: none;">
             <div class="control-row">
                 <div class="control-label">カメラ切替:</div>
                 <div class="btn-group">
@@ -95,11 +126,12 @@
             client.subscribe(TOPIC_URL);
         });
 
-        // カメラ起動ボタンの挙動
         document.getElementById('startBtn').onclick = () => {
             isWatching = true;
             client.publish(TOPIC_CONTROL, 'START_CAMERA');
-            document.getElementById('startBtn').innerText = '起動信号送信中...';
+            document.getElementById('startBtn').innerText = '通信経路を確立中（約10秒）...';
+            document.getElementById('startBtn').style.backgroundColor = '#888';
+            document.getElementById('startBtn').disabled = true;
         };
 
         client.on('message', (topic, message) => {
@@ -119,16 +151,14 @@
             }
         });
 
-        // 映像とすべての操作ボタンを表示する関数
         function showVideo(url) {
             const ifr = document.getElementById('mainPlayer');
             ifr.src = url;
             
-            // 各要素の表示・非表示を切り替え
             document.getElementById('videoWrapper').style.display = 'block';
-            document.getElementById('controls').style.display = 'block'; // パネル全体
-            document.getElementById('stopBtn').style.display = 'block';  // 終了ボタン
-            document.getElementById('startBtn').style.display = 'none';   // 起動ボタン
+            document.getElementById('controls').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'block'; 
+            document.getElementById('startBtn').style.display = 'none';
             
             hideOverlay();
         }
@@ -162,11 +192,7 @@
             if (!isWatching) return;
             isWatching = false;
             client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
-            
-            // ページを初期状態に戻す
-            setTimeout(() => {
-                location.reload();
-            }, 500);
+            setTimeout(() => { location.reload(); }, 500);
         }
 
         function showOverlay(text) {
@@ -182,7 +208,6 @@
             servoClient.publish(SERVO_TOPIC, num.toString());
         }
 
-        // ブラウザやタブを閉じる際のカウント減少処理
         window.addEventListener('beforeunload', () => {
             if (isWatching) client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
         });
