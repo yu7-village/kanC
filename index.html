@@ -3,66 +3,164 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>監視カメラ・リモコン</title>
+    <title>監視カメラ統合パネル</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background-color: #f0f2f5; }
-        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
-        h1 { color: #1a73e8; font-size: 1.5rem; }
-        button { width: 100%; padding: 15px; font-size: 1.2rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin: 10px 0; }
-        #startBtn { background-color: #34a853; color: white; }
-        #stopBtn { background-color: #ea4335; color: white; }
-        .view-link { display: inline-block; padding: 15px 25px; background-color: #1a73e8; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px; cursor: pointer; border: none; width: 100%; }
-        #status { margin: 15px 0; padding: 10px; background: #eee; border-radius: 5px; font-size: 0.9rem; }
+        body { font-family: sans-serif; text-align: center; margin: 0; padding: 10px; background-color: #f0f2f5; color: #333; }
+        .container { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+        h1 { color: #1a73e8; font-size: 1.2rem; margin: 10px 0; }
+        
+        /* 映像エリア */
+        .video-container { width: 100%; background: #000; position: relative; overflow: hidden; border-radius: 10px; margin-bottom: 15px; display: none; }
+        iframe { width: 100%; height: 56.25vw; border: none; display: block; }
+        
+        /* 通知オーバーレイ */
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10; color: white;
+        }
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 操作パネル */
+        .control-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+        .control-label { font-size: 0.85rem; font-weight: bold; color: #1a73e8; min-width: 70px; text-align: right; }
+        .btn-group { display: flex; gap: 5px; flex: 1; }
+        
+        button { padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        #startBtn { background-color: #34a853; color: white; width: 100%; }
+        #stopBtn { background-color: #ea4335; color: white; width: 100%; margin-top: 10px; display: none; }
+        .btn-cam { background: #673ab7; color: white; flex: 1; }
+        .btn-servo { background: #607d8b; color: white; flex: 1; font-size: 11px; }
+        .btn-refresh { background: #f4b400; color: white; width: 100%; margin-top: 10px; }
+        
+        .note { font-size: 11px; color: #666; margin-top: 10px; line-height: 1.4; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🏠 見守りカメラ</h1>
-        <div id="status">ステータス: 接続中...</div>
+        <h1>🏠 監視カメラ統合パネル</h1>
+        <div id="status" style="font-size: 12px; margin-bottom: 10px;">接続中...</div>
+
+        <div id="videoWrapper" class="video-container">
+            <div id="overlay">
+                <div class="spinner"></div>
+                <div id="overlayText">画像が切り替わります...</div>
+            </div>
+            <iframe id="mainPlayer" src=""></iframe>
+        </div>
+
         <button id="startBtn">カメラを起動する</button>
-        <button id="stopBtn">カメラを停止する</button>
-        <div id="linkArea"></div>
+
+        <div id="controls" style="display: none; margin-top: 15px;">
+            <div class="control-row">
+                <div class="control-label">カメラ切替:</div>
+                <div class="btn-group">
+                    <button class="btn-cam" onclick="sendControl('SWITCH_CAM1')">カメラ１</button>
+                    <button class="btn-cam" onclick="sendControl('SWITCH_CAM2')">カメラ２</button>
+                </div>
+            </div>
+            <div class="control-row">
+                <div class="control-label">サーボ動作:</div>
+                <div class="btn-group">
+                    <button class="btn-servo" onclick="sendServo(1)">動作1(30°)</button>
+                    <button class="btn-servo" onclick="sendServo(2)">動作2(60°)</button>
+                    <button class="btn-servo" onclick="sendServo(3)">動作3(90°)</button>
+                </div>
+            </div>
+            <button class="btn-refresh" onclick="refreshVideo()">♻️ 映像再読込（手動）</button>
+            <button id="stopBtn" onclick="stopWatching()">カメラ視聴を終了する</button>
+            <p class="note">⚠️ 他の人がカメラ切替を行うと、こちらの映像も自動的に切り替わります。</p>
+        </div>
     </div>
 
     <script>
         const BROKER_URL = 'wss://x0a42d28.ala.asia-southeast1.emqxsl.com:8084/mqtt';
         const TOPIC_CONTROL = 'myneco/cam/maneki7/control';
         const TOPIC_URL = 'myneco/cam/maneki7/url_info';
+        const SERVO_TOPIC = "rnubnxuhbtdjsm-un-siewuchtus-2026/nudjx";
 
-        const client = mqtt.connect(BROKER_URL, {
-            username: 'kanC', password: 'wMAdfBLkQiM2t9D'
-        });
+        let isWatching = false;
+        let streamUrl = "";
+
+        const client = mqtt.connect(BROKER_URL, { username: 'kanC', password: 'wMAdfBLkQiM2t9D' });
+        const servoClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
 
         client.on('connect', () => {
-            document.getElementById('status').innerText = 'ステータス: 接続完了';
+            document.getElementById('status').innerText = '● 接続完了';
             client.subscribe(TOPIC_URL);
         });
 
+        // 起動ボタン
         document.getElementById('startBtn').onclick = () => {
-            document.getElementById('linkArea').innerHTML = '準備中...';
+            isWatching = true;
             client.publish(TOPIC_CONTROL, 'START_CAMERA');
+            document.getElementById('startBtn').innerText = '起動信号送信中...';
         };
 
-        document.getElementById('stopBtn').onclick = () => {
-            document.getElementById('linkArea').innerHTML = '';
-            client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
-        };
-
+        // メッセージ受信
         client.on('message', (topic, message) => {
+            const data = message.toString();
+
             if (topic === TOPIC_URL) {
-                const receivedData = message.toString();
-                if (receivedData.includes('<html')) {
-                    document.getElementById('linkArea').innerHTML = `
-                        <button class="view-link" id="openView">🔴 映像と操作パネルを開く</button>
-                    `;
-                    document.getElementById('openView').onclick = () => {
-                        const newWindow = window.open();
-                        newWindow.document.write(receivedData);
-                        newWindow.document.close();
-                    };
+                // 1. URL通知（起動時・切替完了時）
+                if (data.startsWith('http')) {
+                    streamUrl = data;
+                    showVideo(data);
+                } 
+                // 2. 他人による切替開始通知
+                else if (data === 'FORCE_RELOAD_START') {
+                    showOverlay("他の人が切替中です...");
                 }
             }
+        });
+
+        function showVideo(url) {
+            const ifr = document.getElementById('mainPlayer');
+            ifr.src = url;
+            document.getElementById('videoWrapper').style.display = 'block';
+            document.getElementById('controls').style.display = 'block';
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'block';
+            hideOverlay();
+        }
+
+        function sendControl(cmd) {
+            if (cmd.startsWith('SWITCH')) showOverlay("カメラ切替中...");
+            client.publish(TOPIC_CONTROL, cmd);
+        }
+
+        function refreshVideo() {
+            client.publish(TOPIC_CONTROL, 'REFRESH_START');
+            const ifr = document.getElementById('mainPlayer');
+            ifr.src = ''; 
+            setTimeout(() => { ifr.src = streamUrl; }, 500);
+        }
+
+        function stopWatching() {
+            if (!isWatching) return;
+            isWatching = false;
+            client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
+            location.reload(); // 画面を初期状態に戻す
+        }
+
+        function showOverlay(text) {
+            document.getElementById('overlayText').innerText = text;
+            document.getElementById('overlay').style.display = 'flex';
+        }
+
+        function hideOverlay() {
+            document.getElementById('overlay').style.display = 'none';
+        }
+
+        function sendServo(num) {
+            servoClient.publish(SERVO_TOPIC, num.toString());
+        }
+
+        // タブを閉じる時の二重カウント防止
+        window.addEventListener('beforeunload', () => {
+            if (isWatching) client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
         });
     </script>
 </body>
