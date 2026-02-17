@@ -30,12 +30,12 @@
         
         button { padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
         #startBtn { background-color: #34a853; color: white; width: 100%; }
-        #stopBtn { background-color: #ea4335; color: white; width: 100%; margin-top: 10px; display: none; }
+        #stopBtn { background-color: #ea4335; color: white; width: 100%; margin-top: 20px; display: none; } /* 初期状態は非表示 */
         .btn-cam { background: #673ab7; color: white; flex: 1; }
         .btn-servo { background: #607d8b; color: white; flex: 1; font-size: 11px; }
         .btn-refresh { background: #f4b400; color: white; width: 100%; margin-top: 10px; }
         
-        .note { font-size: 11px; color: #666; margin-top: 10px; line-height: 1.4; }
+        .note { font-size: 11px; color: #666; margin-top: 15px; line-height: 1.4; padding: 0 10px; }
     </style>
 </head>
 <body>
@@ -70,8 +70,10 @@
                 </div>
             </div>
             <button class="btn-refresh" onclick="refreshVideo()">♻️ 映像再読込（手動）</button>
+            
             <button id="stopBtn" onclick="stopWatching()">カメラ視聴を終了する</button>
-            <p class="note">⚠️ 他の人がカメラ切替を行うと、こちらの映像も自動的に切り替わります。</p>
+            
+            <p class="note">⚠️ 同じタイミングで見ている人がカメラ切替すると、こちらのカメラも切り替わります。</p>
         </div>
     </div>
 
@@ -83,7 +85,7 @@
 
         let isWatching = false;
         let streamUrl = "";
-        let isMyOwnAction = false; // 自分が操作したかを判別するフラグ
+        let isMyOwnAction = false; 
 
         const client = mqtt.connect(BROKER_URL, { username: 'kanC', password: 'wMAdfBLkQiM2t9D' });
         const servoClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
@@ -93,6 +95,7 @@
             client.subscribe(TOPIC_URL);
         });
 
+        // カメラ起動ボタンの挙動
         document.getElementById('startBtn').onclick = () => {
             isWatching = true;
             client.publish(TOPIC_CONTROL, 'START_CAMERA');
@@ -103,15 +106,12 @@
             const data = message.toString();
 
             if (topic === TOPIC_URL) {
-                // 1. 新しいURLを受信（切替完了時）
                 if (data.startsWith('http')) {
                     streamUrl = data;
                     showVideo(data);
-                    isMyOwnAction = false; // 完了したのでフラグを戻す
+                    isMyOwnAction = false;
                 } 
-                // 2. 切替開始通知を受信
                 else if (data === 'FORCE_RELOAD_START') {
-                    // 自分の操作でない場合のみ「他の人が～」を表示
                     if (!isMyOwnAction) {
                         showOverlay("他の人が操作（切替/更新）中です...");
                     }
@@ -119,25 +119,30 @@
             }
         });
 
+        // 映像とすべての操作ボタンを表示する関数
         function showVideo(url) {
             const ifr = document.getElementById('mainPlayer');
             ifr.src = url;
+            
+            // 各要素の表示・非表示を切り替え
             document.getElementById('videoWrapper').style.display = 'block';
-            document.getElementById('controls').style.display = 'block';
-            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('controls').style.display = 'block'; // パネル全体
+            document.getElementById('stopBtn').style.display = 'block';  // 終了ボタン
+            document.getElementById('startBtn').style.display = 'none';   // 起動ボタン
+            
             hideOverlay();
         }
 
         function sendControl(cmd) {
             if (cmd.startsWith('SWITCH')) {
-                isMyOwnAction = true; // 自分の操作であることを記録
+                isMyOwnAction = true; 
                 showOverlay("カメラ切替中...");
             }
             client.publish(TOPIC_CONTROL, cmd);
         }
 
         function refreshVideo() {
-            isMyOwnAction = true; // 自分の操作であることを記録
+            isMyOwnAction = true;
             showOverlay("映像を再読込中...");
             
             client.publish(TOPIC_CONTROL, 'REFRESH_START');
@@ -145,7 +150,6 @@
             ifr.src = ''; 
             setTimeout(() => { ifr.src = streamUrl; }, 500);
             
-            // 手動更新はURL通知が来ないので、2秒後に自分でメッセージを消す
             setTimeout(() => { 
                 if (isMyOwnAction) {
                     hideOverlay();
@@ -158,7 +162,11 @@
             if (!isWatching) return;
             isWatching = false;
             client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
-            location.reload();
+            
+            // ページを初期状態に戻す
+            setTimeout(() => {
+                location.reload();
+            }, 500);
         }
 
         function showOverlay(text) {
@@ -174,6 +182,7 @@
             servoClient.publish(SERVO_TOPIC, num.toString());
         }
 
+        // ブラウザやタブを閉じる際のカウント減少処理
         window.addEventListener('beforeunload', () => {
             if (isWatching) client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
         });
