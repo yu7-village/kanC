@@ -3,163 +3,272 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>監視カメラ・環境ダッシュボード</title>
+    <title>監視カメラ統合パネル</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; text-align: center; margin: 0; padding: 10px; background-color: #f0f2f5; color: #333; }
-        .container { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 95%; max-width: 1000px; margin: auto; }
-        h1 { color: #1a73e8; font-size: 1.2rem; margin: 10px 0; }
-        .video-container { width: 100%; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; position: relative; }
-        iframe { width: 100%; height: 100%; border: none; }
-        .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
-        button { padding: 12px; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; font-weight: bold; }
-        .btn-start { background-color: #34a853; color: white; }
-        .btn-switch { background-color: #1a73e8; color: white; }
-        .btn-stop { background-color: #ea4335; color: white; }
-        .btn-servo { background-color: #fbbc05; color: #333; }
-        .note { font-size: 0.8rem; color: #666; margin-top: 10px; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); color: white; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; z-index: 10; }
         
-        /* グラフエリアのデザイン */
-        .sensor-section { margin-top: 25px; border-top: 1px solid #eee; padding-top: 15px; position: relative; }
-        .vbatt-badge { position: absolute; top: 15px; right: 10px; font-size: 0.85rem; background: #e8f0fe; padding: 4px 8px; border-radius: 5px; color: #1967d2; font-weight: bold; }
-        canvas { width: 100% !important; height: auto !important; max-height: 350px; }
+        /* コンテナ：PCでは広く、スマホでは幅いっぱいに */
+        .container { 
+            background: white; 
+            padding: 15px; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            width: 95%;
+            max-width: 1000px; /* パソコンで最大1000pxまで拡大 */
+            margin: auto; 
+        }
+
+        h1 { color: #1a73e8; font-size: 1.2rem; margin: 10px 0; }
+        
+        /* 映像エリア：16:9の比率を維持してレスポンシブに拡大 */
+        .video-container { 
+            width: 100%; 
+            background: #000; 
+            position: relative; 
+            overflow: hidden; 
+            border-radius: 10px; 
+            margin-bottom: 15px; 
+            display: none;
+            aspect-ratio: 16 / 9; /* 映像の比率を固定 */
+        }
+        iframe { 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            display: block; 
+        }
+        
+        /* 通知オーバーレイ */
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10; color: white;
+        }
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 操作パネル：ボタン類は横に広がりすぎないよう中央寄りに制限 */
+        #controls {
+            max-width: 600px;
+            margin: 15px auto 0;
+        }
+
+        .control-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+        .control-label { font-size: 0.85rem; font-weight: bold; color: #1a73e8; min-width: 70px; text-align: right; }
+        .btn-group { display: flex; gap: 5px; flex: 1; }
+        
+        button { padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        #startBtn { background-color: #34a853; color: white; width: 100%; max-width: 400px; margin: 20px auto; }
+        #stopBtn { background-color: #ea4335; color: white; width: 100%; margin-top: 25px; display: none; }
+        
+        .btn-cam { background: #673ab7; color: white; flex: 1; }
+        .btn-servo { background: #607d8b; color: white; flex: 1; font-size: 11px; }
+        .btn-refresh { background: #f4b400; color: white; width: 100%; margin-top: 10px; }
+        
+        .note { font-size: 11px; color: #666; margin-top: 15px; line-height: 1.4; padding: 0 10px; }
+
+        /* 追加：センサーセクションのデザイン */
+        .sensor-section { margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; position: relative; text-align: left; }
+        .vbatt-badge { position: absolute; top: 20px; right: 10px; font-size: 0.8rem; background: #e8f0fe; padding: 4px 10px; border-radius: 5px; color: #1967d2; font-weight: bold; }
+        canvas { width: 100% !important; height: auto !important; max-height: 350px; margin-top: 10px; }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h1>🏠 監視カメラ統合パネル</h1>
+        <div id="status" style="font-size: 12px; margin-bottom: 10px;">接続中...</div>
 
-<div class="container">
-    <h1>Maneki7 監視パネル</h1>
-    
-    <div class="video-container">
-        <div id="overlay">「カメラを開始」を押してください</div>
-        <iframe id="mainPlayer" allowfullscreen></iframe>
+        <div id="videoWrapper" class="video-container">
+            <div id="overlay">
+                <div class="spinner"></div>
+                <div id="overlayText">画像が切り替わります...</div>
+            </div>
+            <iframe id="mainPlayer" src=""></iframe>
+        </div>
+
+        <button id="startBtn">カメラを起動する</button>
+
+        <div id="controls" style="display: none;">
+            <div class="control-row">
+                <div class="control-label">カメラ切替:</div>
+                <div class="btn-group">
+                    <button class="btn-cam" onclick="sendControl('SWITCH_CAM1')">カメラ１</button>
+                    <button class="btn-cam" onclick="sendControl('SWITCH_CAM2')">カメラ２</button>
+                </div>
+            </div>
+            <div class="control-row">
+                <div class="control-label">サーボ動作:</div>
+                <div class="btn-group">
+                    <button class="btn-servo" onclick="sendServo(1)">動作1(30°)</button>
+                    <button class="btn-servo" onclick="sendServo(2)">動作2(60°)</button>
+                    <button class="btn-servo" onclick="sendServo(3)">動作3(90°)</button>
+                </div>
+            </div>
+            <button class="btn-refresh" onclick="refreshVideo()">♻️ 映像再読込（手動）</button>
+            
+            <button id="stopBtn" onclick="stopWatching()">カメラ視聴を終了する</button>
+            
+            <p class="note">⚠️ 同じタイミングで見ている人がカメラ切替すると、こちらのカメラも切り替わります。</p>
+
+            <div class="sensor-section">
+                <div id="vbatt-display" class="vbatt-badge">電池: --- mV</div>
+                <h2 style="font-size: 1rem; color: #1a73e8; margin-bottom: 5px;">🌡️ 環境センサー履歴 (24時間)</h2>
+                <canvas id="sensorChart"></canvas>
+            </div>
+        </div>
     </div>
 
-    <div class="controls">
-        <button class="btn-start" onclick="startCamera()">カメラを開始</button>
-        <button class="btn-switch" onclick="switchCam('SWITCH_CAM1')">内蔵カメラ</button>
-        <button class="btn-switch" onclick="switchCam('SWITCH_CAM2')">USBカメラ</button>
-        <button class="btn-stop" onclick="stopWatching()">終了</button>
-    </div>
+    <script>
+        const BROKER_URL = 'wss://x0a42d28.ala.asia-southeast1.emqxsl.com:8084/mqtt';
+        const TOPIC_CONTROL = 'myneco/cam/maneki7/control';
+        const TOPIC_URL = 'myneco/cam/maneki7/url_info';
+        const SERVO_TOPIC = "rnubnxuhbtdjsm-un-siewuchtus-2026/nudjx";
 
-    <div class="controls" style="margin-top:10px;">
-        <button class="btn-servo" onclick="sendServo(1)">左へ</button>
-        <button class="btn-servo" onclick="sendServo(0)">正面</button>
-        <button class="btn-servo" onclick="sendServo(2)">右へ</button>
-        <button class="btn-servo" onclick="refreshVideo()">更新</button>
-    </div>
+        let isWatching = false;
+        let streamUrl = "";
+        let isMyOwnAction = false; 
+        let myChart = null; // グラフ用
 
-    <p class="note">⚠️ 映像が表示されない場合は「更新」を押してください</p>
+        const client = mqtt.connect(BROKER_URL, { username: 'kanC', password: 'wMAdfBLkQiM2t9D' });
+        const servoClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
 
-    <div class="sensor-section">
-        <div id="vbatt-display" class="vbatt-badge">電池: --- mV</div>
-        <h2 style="font-size: 1rem; text-align: left; margin-left: 10px;">環境センサー履歴 (24h)</h2>
-        <canvas id="sensorChart"></canvas>
-    </div>
-</div>
+        client.on('connect', () => {
+            document.getElementById('status').innerText = '● 接続完了';
+            client.subscribe(TOPIC_URL);
+        });
 
-<script>
-    const HOST = 'x0a42d28.ala.asia-southeast1.emqxsl.com';
-    const TOPIC_CONTROL = 'myneco/cam/maneki7/control';
-    const TOPIC_REPLY = 'myneco/cam/maneki7/url_info';
-    const SERVO_TOPIC = 'maneki7/servo';
+        document.getElementById('startBtn').onclick = () => {
+            isWatching = true;
+            client.publish(TOPIC_CONTROL, 'START_CAMERA');
+            document.getElementById('startBtn').innerText = '通信経路を確立中（約10秒）...';
+            document.getElementById('startBtn').style.backgroundColor = '#888';
+            document.getElementById('startBtn').disabled = true;
+        };
 
-    const client = mqtt.connect(`wss://${HOST}:8084/mqtt`, { username: 'kanC', password: 'wMAdfBLkQiM2t9D' });
-    const servoClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+        client.on('message', (topic, message) => {
+            const data = message.toString();
 
-    let streamUrl = "";
-    let isWatching = false;
-    let myChart = null;
+            if (topic === TOPIC_URL) {
+                if (data.startsWith('http')) {
+                    streamUrl = data;
+                    showVideo(data);
+                    isMyOwnAction = false;
+                } 
+                else if (data === 'FORCE_RELOAD_START') {
+                    if (!isMyOwnAction) {
+                        showOverlay("他の人が操作（切替/更新）中です...");
+                    }
+                }
+            }
+        });
 
-    client.on('connect', () => { client.subscribe(TOPIC_REPLY); });
-
-    client.on('message', (topic, message) => {
-        const msg = message.toString();
-        if (msg === 'FORCE_RELOAD_START') {
-            showOverlay("カメラ切替中...");
-            return;
-        }
-        if (msg.startsWith('http')) {
-            streamUrl = msg;
-            document.getElementById('mainPlayer').src = streamUrl;
+        function showVideo(url) {
+            const ifr = document.getElementById('mainPlayer');
+            ifr.src = url;
+            
+            document.getElementById('videoWrapper').style.display = 'block';
+            document.getElementById('controls').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'block'; 
+            document.getElementById('startBtn').style.display = 'none';
+            
             hideOverlay();
+            updateChart(); // ビデオ表示時にグラフも読み込む
         }
-    });
 
-    function startCamera() {
-        isWatching = true;
-        showOverlay("システム起動中 (約15秒)...");
-        client.publish(TOPIC_CONTROL, 'START_CAMERA');
-    }
-
-    function switchCam(cmd) {
-        if (isWatching) {
-            showOverlay("カメラ切替中...");
+        function sendControl(cmd) {
+            if (cmd.startsWith('SWITCH')) {
+                isMyOwnAction = true; 
+                showOverlay("カメラ切替中...");
+            }
             client.publish(TOPIC_CONTROL, cmd);
         }
-    }
 
-    function refreshVideo() {
-        showOverlay("再読込中...");
-        client.publish(TOPIC_CONTROL, 'REFRESH_START');
-        const ifr = document.getElementById('mainPlayer');
-        ifr.src = ''; 
-        setTimeout(() => { ifr.src = streamUrl; hideOverlay(); }, 1500);
-    }
+        function refreshVideo() {
+            isMyOwnAction = true;
+            showOverlay("映像を再読込中...");
+            
+            client.publish(TOPIC_CONTROL, 'REFRESH_START');
+            const ifr = document.getElementById('mainPlayer');
+            ifr.src = ''; 
+            setTimeout(() => { ifr.src = streamUrl; }, 500);
+            
+            setTimeout(() => { 
+                if (isMyOwnAction) {
+                    hideOverlay();
+                    isMyOwnAction = false;
+                }
+            }, 2000);
+        }
 
-    function stopWatching() {
-        client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
-        setTimeout(() => { location.reload(); }, 500);
-    }
+        function stopWatching() {
+            if (!isWatching) return;
+            isWatching = false;
+            client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
+            setTimeout(() => { location.reload(); }, 500);
+        }
 
-    function sendServo(num) { servoClient.publish(SERVO_TOPIC, num.toString()); }
-    function showOverlay(text) { const o = document.getElementById('overlay'); o.innerText = text; o.style.display = 'flex'; }
-    function hideOverlay() { document.getElementById('overlay').style.display = 'none'; }
+        function showOverlay(text) {
+            document.getElementById('overlayText').innerText = text;
+            document.getElementById('overlay').style.display = 'flex';
+        }
 
-    // --- グラフ更新ロジック ---
-    async function updateChart() {
-        try {
-            const response = await fetch('/sensor-data');
-            const data = await response.json();
-            if (!data.time || data.time.length === 0) return;
+        function hideOverlay() {
+            document.getElementById('overlay').style.display = 'none';
+        }
 
-            // 電圧表示の更新
-            if (data.vbatt && data.vbatt.length > 0) {
-                document.getElementById('vbatt-display').innerText = `電池: ${data.vbatt[data.vbatt.length - 1]} mV`;
-            }
+        function sendServo(num) {
+            servoClient.publish(SERVO_TOPIC, num.toString());
+        }
 
-            const ctx = document.getElementById('sensorChart').getContext('2d');
-            if (myChart) {
-                myChart.data.labels = data.time;
-                myChart.data.datasets[0].data = data.temp;
-                myChart.data.datasets[1].data = data.press;
-                myChart.update('none');
-            } else {
-                myChart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: data.time,
-                        datasets: [
-                            { label: '温度 (℃)', data: data.temp, borderColor: '#ea4335', backgroundColor: '#ea433533', yAxisID: 'y-temp', tension: 0.3, pointRadius: 1 },
-                            { label: '気圧 (hPa)', data: data.press, borderColor: '#1a73e8', backgroundColor: '#1a73e833', yAxisID: 'y-press', tension: 0.3, pointRadius: 1 }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            'y-temp': { type: 'linear', position: 'left', title: { display: true, text: '温度 (℃)' } },
-                            'y-press': { type: 'linear', position: 'right', title: { display: true, text: '気圧 (hPa)' }, grid: { drawOnChartArea: false } }
+        window.addEventListener('beforeunload', () => {
+            if (isWatching) client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
+        });
+
+        // --- 追加：センサーグラフ更新ロジック ---
+        async function updateChart() {
+            try {
+                const response = await fetch('/sensor-data');
+                const data = await response.json();
+                if (!data.time || data.time.length === 0) return;
+
+                // 電圧バッジの更新
+                if (data.vbatt && data.vbatt.length > 0) {
+                    document.getElementById('vbatt-display').innerText = `電池: ${data.vbatt[data.vbatt.length - 1]} mV`;
+                }
+
+                const ctx = document.getElementById('sensorChart').getContext('2d');
+                if (myChart) {
+                    myChart.data.labels = data.time;
+                    myChart.data.datasets[0].data = data.temp;
+                    myChart.data.datasets[1].data = data.press;
+                    myChart.update('none');
+                } else {
+                    myChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.time,
+                            datasets: [
+                                { label: '温度 (℃)', data: data.temp, borderColor: '#ea4335', backgroundColor: '#ea433533', yAxisID: 'y-temp', tension: 0.3, pointRadius: 1 },
+                                { label: '気圧 (hPa)', data: data.press, borderColor: '#1a73e8', backgroundColor: '#1a73e833', yAxisID: 'y-press', tension: 0.3, pointRadius: 1 }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            interaction: { mode: 'index', intersect: false },
+                            scales: {
+                                'y-temp': { type: 'linear', position: 'left', title: { display: true, text: '温度 (℃)' } },
+                                'y-press': { type: 'linear', position: 'right', title: { display: true, text: '気圧 (hPa)' }, grid: { drawOnChartArea: false } }
+                            }
                         }
-                    }
-                });
-            }
-        } catch (e) { console.error("データ取得失敗:", e); }
-    }
+                    });
+                }
+            } catch (e) { console.error("データ取得失敗:", e); }
+        }
 
-    setInterval(updateChart, 60000); // 1分ごとに更新
-    updateChart(); // 初回実行
-</script>
+        // 1分ごとにデータを再読込
+        setInterval(() => { if(isWatching) updateChart(); }, 60000);
+    </script>
 </body>
 </html>
