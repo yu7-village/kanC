@@ -7,6 +7,7 @@
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* 元のスタイルを完全維持 */
         body { font-family: sans-serif; text-align: center; margin: 0; padding: 10px; background-color: #f0f2f5; color: #333; }
         .container { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 95%; max-width: 1000px; margin: auto; }
         h1 { color: #1a73e8; font-size: 1.2rem; margin: 10px 0; }
@@ -18,7 +19,6 @@
         #controls { max-width: 600px; margin: 15px auto 0; }
         .control-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
         .control-label { font-size: 0.85rem; font-weight: bold; color: #1a73e8; min-width: 70px; text-align: right; }
-        .btn-group { display: flex; gap: 5px; flex: 1; }
         button { padding: 12px; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
         #startBtn { background-color: #34a853; color: white; width: 100%; max-width: 400px; margin: 20px auto; }
         #stopBtn { background-color: #ea4335; color: white; width: 100%; margin-top: 25px; display: none; }
@@ -27,7 +27,7 @@
         .btn-refresh { background: #f4b400; color: white; width: 100%; margin-top: 10px; }
         .note { font-size: 11px; color: #666; margin-top: 15px; line-height: 1.4; padding: 0 10px; }
 
-        /* 追加：センサーセクション */
+        /* 追加：センサーグラフ用 */
         .sensor-section { margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; position: relative; text-align: left; }
         .vbatt-badge { position: absolute; top: 20px; right: 10px; font-size: 0.8rem; background: #e8f0fe; padding: 4px 10px; border-radius: 5px; color: #1967d2; font-weight: bold; }
         canvas { width: 100% !important; height: auto !important; max-height: 350px; margin-top: 10px; }
@@ -37,22 +37,28 @@
     <div class="container">
         <h1>🏠 監視カメラ統合パネル</h1>
         <div id="status" style="font-size: 12px; margin-bottom: 10px;">接続中...</div>
+
         <div id="videoWrapper" class="video-container">
-            <div id="overlay"><div class="spinner"></div><div id="overlayText">画像が切り替わります...</div></div>
+            <div id="overlay">
+                <div class="spinner"></div>
+                <div id="overlayText">画像が切り替わります...</div>
+            </div>
             <iframe id="mainPlayer" src=""></iframe>
         </div>
+
         <button id="startBtn">カメラを起動する</button>
+
         <div id="controls" style="display: none;">
             <div class="control-row">
                 <div class="control-label">カメラ切替:</div>
-                <div class="btn-group">
+                <div class="btn-group" style="display:flex; gap:5px; flex:1;">
                     <button class="btn-cam" onclick="sendControl('SWITCH_CAM1')">カメラ１</button>
                     <button class="btn-cam" onclick="sendControl('SWITCH_CAM2')">カメラ２</button>
                 </div>
             </div>
             <div class="control-row">
                 <div class="control-label">サーボ動作:</div>
-                <div class="btn-group">
+                <div class="btn-group" style="display:flex; gap:5px; flex:1;">
                     <button class="btn-servo" onclick="sendServo(1)">動作1(30°)</button>
                     <button class="btn-servo" onclick="sendServo(2)">動作2(60°)</button>
                     <button class="btn-servo" onclick="sendServo(3)">動作3(90°)</button>
@@ -64,12 +70,14 @@
 
             <div class="sensor-section">
                 <div id="vbatt-display" class="vbatt-badge">電池: --- mV</div>
-                <h2 style="font-size: 1rem; color: #1a73e8; margin-bottom: 5px;">🌡️ 環境センサー履歴 (24時間)</h2>
+                <h2 style="font-size: 1rem; color: #1a73e8; margin-bottom: 5px;">🌡️ 環境センサー履歴</h2>
                 <canvas id="sensorChart"></canvas>
             </div>
         </div>
     </div>
+
     <script>
+        // --- 元のロジックを完全復元 ---
         const BROKER_URL = 'wss://x0a42d28.ala.asia-southeast1.emqxsl.com:8084/mqtt';
         const TOPIC_CONTROL = 'myneco/cam/maneki7/control';
         const TOPIC_URL = 'myneco/cam/maneki7/url_info';
@@ -83,7 +91,10 @@
         const client = mqtt.connect(BROKER_URL, { username: 'kanC', password: 'wMAdfBLkQiM2t9D' });
         const servoClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
 
-        client.on('connect', () => { document.getElementById('status').innerText = '● 接続完了'; client.subscribe(TOPIC_URL); });
+        client.on('connect', () => {
+            document.getElementById('status').innerText = '● 接続完了';
+            client.subscribe(TOPIC_URL);
+        });
 
         document.getElementById('startBtn').onclick = () => {
             isWatching = true;
@@ -96,8 +107,13 @@
         client.on('message', (topic, message) => {
             const data = message.toString();
             if (topic === TOPIC_URL) {
-                if (data.startsWith('http')) { streamUrl = data; showVideo(data); isMyOwnAction = false; } 
-                else if (data === 'FORCE_RELOAD_START') { if (!isMyOwnAction) { showOverlay("他の人が操作（切替/更新）中です..."); } }
+                if (data.startsWith('http')) {
+                    streamUrl = data;
+                    showVideo(data);
+                    isMyOwnAction = false;
+                } else if (data === 'FORCE_RELOAD_START') {
+                    if (!isMyOwnAction) showOverlay("他の人が操作（切替/更新）中です...");
+                }
             }
         });
 
@@ -109,35 +125,58 @@
             document.getElementById('stopBtn').style.display = 'block'; 
             document.getElementById('startBtn').style.display = 'none';
             hideOverlay();
-            updateChart();
+            updateChart(); // 追加
         }
 
-        function sendControl(cmd) { if (cmd.startsWith('SWITCH')) { isMyOwnAction = true; showOverlay("カメラ切替中..."); } client.publish(TOPIC_CONTROL, cmd); }
+        function sendControl(cmd) {
+            if (cmd.startsWith('SWITCH')) {
+                isMyOwnAction = true; 
+                showOverlay("カメラ切替中...");
+            }
+            client.publish(TOPIC_CONTROL, cmd);
+        }
 
         function refreshVideo() {
-            isMyOwnAction = true; showOverlay("映像を再読込中...");
+            isMyOwnAction = true;
+            showOverlay("映像を再読込中...");
             client.publish(TOPIC_CONTROL, 'REFRESH_START');
             const ifr = document.getElementById('mainPlayer');
             ifr.src = ''; 
             setTimeout(() => { ifr.src = streamUrl; }, 500);
-            setTimeout(() => { if (isMyOwnAction) { hideOverlay(); isMyOwnAction = false; } }, 2000);
+            setTimeout(() => { 
+                if (isMyOwnAction) { hideOverlay(); isMyOwnAction = false; }
+            }, 2000);
         }
 
-        function stopWatching() { if (!isWatching) return; isWatching = false; client.publish(TOPIC_CONTROL, 'STOP_CAMERA'); setTimeout(() => { location.reload(); }, 500); }
+        function stopWatching() {
+            if (!isWatching) return;
+            isWatching = false;
+            client.publish(TOPIC_CONTROL, 'STOP_CAMERA');
+            setTimeout(() => { location.reload(); }, 500);
+        }
+
         function showOverlay(text) { document.getElementById('overlayText').innerText = text; document.getElementById('overlay').style.display = 'flex'; }
         function hideOverlay() { document.getElementById('overlay').style.display = 'none'; }
         function sendServo(num) { servoClient.publish(SERVO_TOPIC, num.toString()); }
+
         window.addEventListener('beforeunload', () => { if (isWatching) client.publish(TOPIC_CONTROL, 'STOP_CAMERA'); });
 
+        // --- グラフ更新ロジック ---
         async function updateChart() {
             try {
                 const response = await fetch('/sensor-data');
                 const data = await response.json();
                 if (!data.time || data.time.length === 0) return;
-                if (data.vbatt && data.vbatt.length > 0) { document.getElementById('vbatt-display').innerText = `電池: ${data.vbatt[data.vbatt.length - 1]} mV`; }
+
+                const labels = data.time.map((t, i) => `${data.date[i]} ${t}`);
+
+                if (data.vbatt && data.vbatt.length > 0) {
+                    document.getElementById('vbatt-display').innerText = `電池: ${data.vbatt[data.vbatt.length - 1]} mV`;
+                }
+
                 const ctx = document.getElementById('sensorChart').getContext('2d');
                 if (myChart) {
-                    myChart.data.labels = data.time;
+                    myChart.data.labels = labels;
                     myChart.data.datasets[0].data = data.temp;
                     myChart.data.datasets[1].data = data.press;
                     myChart.update('none');
@@ -145,13 +184,19 @@
                     myChart = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            labels: data.time,
+                            labels: labels,
                             datasets: [
                                 { label: '温度 (℃)', data: data.temp, borderColor: '#ea4335', backgroundColor: '#ea433533', yAxisID: 'y-temp', tension: 0.3, pointRadius: 1 },
                                 { label: '気圧 (hPa)', data: data.press, borderColor: '#1a73e8', backgroundColor: '#1a73e833', yAxisID: 'y-press', tension: 0.3, pointRadius: 1 }
                             ]
                         },
-                        options: { responsive: true, scales: { 'y-temp': { type: 'linear', position: 'left', title: { display: true, text: '温度' } }, 'y-press': { type: 'linear', position: 'right', title: { display: true, text: '気圧' }, grid: { drawOnChartArea: false } } } }
+                        options: { 
+                            responsive: true,
+                            scales: { 
+                                'y-temp': { type: 'linear', position: 'left' },
+                                'y-press': { type: 'linear', position: 'right', grid: { drawOnChartArea: false } }
+                            }
+                        }
                     });
                 }
             } catch (e) { console.error("データ取得失敗:", e); }
